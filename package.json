@@ -1,0 +1,50 @@
+{
+  "name": "spiritual-wisdom-chatbot",
+  "version": "1.0.0",
+  "description": "A spiritual guidance and wisdom chatbot server powered by AI",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "lint": "eslint src/",
+    "format": "prettier --write src/",
+    "prepare": "husky install",
+    "start:prod": "NODE_ENV=production node src/index.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "author": "Anju Karanji <anjukaranji@gmail.com>",
+  "license": "MIT",
+  "dependencies": {
+    "@huggingface/inference": "^3.15.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0",
+    "express-rate-limit": "^7.1.5",
+    "express-session": "^1.18.1",
+    "helmet": "^7.1.0",
+    "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^10.1.5",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.1.0",
+    "nodemon": "^3.1.10",
+    "prettier": "^3.5.3"
+  },
+  "config": {
+    "port": 3000
+  },
+  "environment": {
+    "development": {
+      "NODE_ENV": "development"
+    },
+    "production": {
+      "NODE_ENV": "production"
+    }
+  }
+}
