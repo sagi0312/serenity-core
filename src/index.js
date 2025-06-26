@@ -7,11 +7,42 @@ import helmet from 'helmet'
 import cors from 'cors'
 import { v4 as uuidv4 } from 'uuid'
 import { saveMessage } from './utils/history.js'
+import { processBook } from './utils/pdfProcessor.js'
+import path from 'path'
+import { fileURLToPath } from 'url'
+import { dirname } from 'path'
 
 dotenv.config()
 
 const app = express()
 const client = new InferenceClient(process.env.HF_API_KEY)
+// get the directory name of the current module
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
+
+const PDF_PATH = path.join(__dirname, '../books/power_of_now.pdf')
+
+// Initialize PDF processing during server startup
+let bookChunks = [] // Will store processed chunks
+async function initializeApp() {
+  try {
+    const { chunks, metadata } = await processBook(PDF_PATH)
+    bookChunks = chunks // Make available globally
+
+    console.log('✅ Book ready. Metadata:', {
+      totalChunks: metadata.totalChunks,
+      avgLength: metadata.avgLength,
+    })
+
+    // Start server only after processing completes
+    app.listen(PORT, () => {
+      console.log(`🕯️ Spiritual chat running on port ${PORT}`)
+    })
+  } catch (error) {
+    console.error('❌ Failed to initialize:', error)
+    process.exit(1) // Crash the app if processing fails
+  }
+}
 
 // Session configuration (for anonymous user tracking)
 app.use(
@@ -141,9 +172,5 @@ app.get('/health', (req, res) => {
 })
 
 const PORT = process.env.PORT || 3000
-app.listen(PORT, () => {
-  console.log(`🕯️ Spiritual chat running on port ${PORT}`)
-  console.log(
-    `➔ Session secret: ${process.env.SESSION_SECRET ? '***' : 'Using temporary key'}`
-  )
-})
+
+initializeApp()

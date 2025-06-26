@@ -9,7 +9,6 @@ const HISTORY_DIR = path.join(homedir(), 'Desktop', 'chat-history')
 const init = async () => {
   try {
     await fs.mkdir(HISTORY_DIR, { recursive: true })
-    console.log(`Storage ready at: ${HISTORY_DIR}`)
   } catch (error) {
     console.error(`Failed to create storage directory: ${HISTORY_DIR}`)
     console.error(error)
