@@ -8,7 +8,10 @@
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "lint": "eslint src/",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "lint:check": "eslint . --max-warnings 0",
+    "precommit": "npm run lint:check",
     "format": "prettier --write src/",
     "start:prod": "NODE_ENV=production node src/index.js"
   },
@@ -30,8 +33,14 @@
     "uuid": "^11.1.0"
   },
   "devDependencies": {
-    "eslint": "^8.57.0",
-    "eslint-config-prettier": "^10.1.5",
+    "@babel/core": "^7.28.0",
+    "@babel/eslint-parser": "^7.28.0",
+    "@babel/preset-env": "^7.28.0",
+    "@eslint/js": "^9.32.0",
+    "eslint": "^8.57.1",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-node": "^11.1.0",
     "lint-staged": "^16.1.0",
     "nodemon": "^3.1.10",
     "prettier": "^3.5.3"

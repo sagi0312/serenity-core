@@ -1,176 +1,106 @@
+// index.js
 import express from 'express'
-import session from 'express-session'
-import { InferenceClient } from '@huggingface/inference'
 import dotenv from 'dotenv'
-import rateLimit from 'express-rate-limit'
-import helmet from 'helmet'
-import cors from 'cors'
-import { v4 as uuidv4 } from 'uuid'
-import { saveMessage } from './utils/history.js'
-import { processBook } from './utils/pdfProcessor.js'
-import path from 'path'
-import { fileURLToPath } from 'url'
-import { dirname } from 'path'
+import { AppConfig } from './config/app.js'
+import { MiddlewareManager } from './middleware/index.js'
+import { RouteManager } from './routes/index.js'
+import { RAGService } from './services/ragService.js'
+import { HealthService } from './services/healthService.js'
+import { ErrorHandler } from './middleware/errorHandler.js'
+import { Logger } from './utils/logger.js'
 
+// Load environment variables
 dotenv.config()
 
-const app = express()
-const client = new InferenceClient(process.env.HF_API_KEY)
-// get the directory name of the current module
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = dirname(__filename)
-
-const PDF_PATH = path.join(__dirname, '../books/power_of_now.pdf')
-
-// Initialize PDF processing during server startup
-let bookChunks = [] // Will store processed chunks
-async function initializeApp() {
-  try {
-    const { chunks, metadata } = await processBook(PDF_PATH)
-    bookChunks = chunks // Make available globally
-
-    console.log('✅ Book ready. Metadata:', {
-      totalChunks: metadata.totalChunks,
-      avgLength: metadata.avgLength,
-    })
-
-    // Start server only after processing completes
-    app.listen(PORT, () => {
-      console.log(`🕯️ Spiritual chat running on port ${PORT}`)
-    })
-  } catch (error) {
-    console.error('❌ Failed to initialize:', error)
-    process.exit(1) // Crash the app if processing fails
+class SpiritualChatApp {
+  constructor() {
+    this.app = express()
+    this.config = new AppConfig()
+    this.logger = new Logger()
+    this.ragService = new RAGService(this.config.pdfPath, this.logger)
+    this.healthService = new HealthService(this.ragService)
+    this.middlewareManager = new MiddlewareManager(this.config)
+    this.routeManager = new RouteManager(this.ragService, this.healthService)
+    this.errorHandler = new ErrorHandler(this.logger)
   }
-}
 
-// Session configuration (for anonymous user tracking)
-app.use(
-  session({
-    secret: process.env.SESSION_SECRET || uuidv4(),
-    resave: false,
-    saveUninitialized: true,
-    cookie: {
-      secure: process.env.NODE_ENV === 'production',
-      maxAge: 86400000, // 24 hours
-    },
-  })
-)
+  async initialize() {
+    try {
+      this.logger.info('🚀 Initializing Spiritual Chat Application...')
 
-// Security headers
-app.use(helmet())
+      // Initialize RAG system first
+      await this.ragService.initialize()
 
-// CORS
-app.use(
-  cors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:5173',
-    credentials: true,
-  })
-)
+      // Setup middleware
+      this.middlewareManager.setup(this.app)
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 10,
-  message: {
-    error: 'Too many requests. Please wait a moment before trying again.',
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-})
+      // Setup routes
+      this.routeManager.setup(this.app)
 
-app.use('/api', limiter)
-app.use(express.json({ limit: '1mb' }))
+      // Setup error handling (must be last)
+      this.errorHandler.setup(this.app)
 
-// Generate session ID if doesn't exist
-app.use((req, res, next) => {
-  if (!req.session.id) {
-    req.session.id = uuidv4() // Anonymous unique ID
-  }
-  next()
-})
+      this.logger.info('✅ Application initialized successfully')
 
-app.post('/api/seek', async (req, res) => {
-  try {
-    const { message } = req.body
-
-    // Input validation
-    if (
-      !message ||
-      typeof message !== 'string' ||
-      message.trim().length === 0
-    ) {
-      return res.status(400).json({ error: 'Valid message required' })
+      return this
+    } catch (error) {
+      this.logger.error('❌ Failed to initialize application:', error)
+      throw error
     }
+  }
 
-    if (message.length > 500) {
-      return res.status(400).json({
-        error: 'Message too long. Please keep it under 500 characters.',
+  async start() {
+    try {
+      const server = this.app.listen(this.config.port, () => {
+        this.logger.info(
+          `🕯️ Spiritual chat server running on port ${this.config.port}`
+        )
+        this.logger.info(
+          `📚 RAG system ready with ${this.ragService.getChunkCount()} chunks`
+        )
+      })
+
+      // Graceful shutdown
+      this.setupGracefulShutdown(server)
+
+      return server
+    } catch (error) {
+      this.logger.error('❌ Failed to start server:', error)
+      process.exit(1)
+    }
+  }
+
+  setupGracefulShutdown(server) {
+    const shutdown = signal => {
+      this.logger.info(`📴 Received ${signal}. Shutting down gracefully...`)
+
+      server.close(() => {
+        this.logger.info('✅ Server closed')
+        this.ragService.cleanup()
+        process.exit(0)
       })
     }
 
-    const response = await client.chatCompletion({
-      model: 'HuggingFaceH4/zephyr-7b-beta',
-      messages: [
-        {
-          role: 'system',
-          content:
-            'You are a wise spiritual guide sharing wisdom from Buddhism, Hinduism, and Taoism. Be gentle and compassionate.',
-        },
-        { role: 'user', content: message },
-      ],
-      max_tokens: 150,
-      temperature: 0.7,
-    })
-
-    const wisdom = response.choices[0].message.content.trim()
-
-    // Save to history (fire-and-forget with error handling)
-    try {
-      await saveMessage(req.session.id, message, wisdom)
-    } catch (historyError) {
-      console.error('History save failed:', historyError)
-      // Continue even if history fails
-    }
-
-    res.json({
-      reply: wisdom,
-      metadata: {
-        sessionId: req.session.id,
-        timestamp: new Date().toISOString(),
-      },
-    })
-  } catch (error) {
-    console.error('Error:', error)
-    res.status(500).json({
-      error: 'Please try again',
-      details:
-        process.env.NODE_ENV === 'development' ? error.message : undefined,
-    })
+    process.on('SIGTERM', () => shutdown('SIGTERM'))
+    process.on('SIGINT', () => shutdown('SIGINT'))
   }
-})
+}
 
-// New endpoint to fetch conversation history
-app.get('/api/history', async (req, res) => {
+// Application entry point
+async function main() {
   try {
-    const history = await getHistory(req.session.id)
-    res.json(history)
+    const app = new SpiritualChatApp()
+    await app.initialize()
+    await app.start()
   } catch (error) {
-    console.error('History fetch failed:', error)
-    res.status(500).json({ error: 'Failed to retrieve history' })
+    console.error('💥 Application startup failed:', error)
+    process.exit(1)
   }
-})
+}
 
-// Health check
-app.get('/health', (req, res) => {
-  res.json({
-    status: 'healthy',
-    timestamp: new Date().toISOString(),
-    version: '1.0.0',
-    sessionCount: req.sessionStore?.length || 'N/A',
-  })
-})
+// Start the application
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main()
+}
 
-const PORT = process.env.PORT || 3000
-
-initializeApp()
+export { SpiritualChatApp }
