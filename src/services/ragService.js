@@ -45,13 +45,40 @@ export class RAGService {
    * @returns {string} - Cleaned response
    */
   cleanResponse(text) {
-    return text
+    let cleaned = text
       .replace(/\s+/g, ' ') // Normalize whitespace
       .replace(/([.!?])\s*([A-Z])/g, '$1 $2') // Fix sentence spacing
       .replace(/([a-z])([A-Z])/g, '$1 $2') // Add spaces between words
       .replace(/\s+([.!?])/g, '$1') // Remove space before punctuation
       .replace(/([.!?]){2,}/g, '$1') // Remove duplicate punctuation
+      .replace(/\?$/, '.') // Replace trailing ? with .
+      .replace(/\?\s*$/, '.') // Replace trailing ? with whitespace
+      .replace(/^\?\s*/, '') // Remove leading ? with optional space
+      .replace(/^\?/, '') // Remove leading ?
       .trim()
+
+    // Remove incomplete last sentence if it doesn't end with punctuation
+    const sentences = cleaned.split(/[.!?]+/)
+    if (
+      sentences.length > 1 &&
+      sentences[sentences.length - 1].trim().length > 0
+    ) {
+      // Last part doesn't end with punctuation, remove it
+      const completeSentences = sentences.slice(0, -1)
+      cleaned = completeSentences.join('.') + '.'
+    }
+
+    // Ensure first letter is capitalized
+    if (cleaned.length > 0) {
+      cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1)
+    }
+
+    // Ensure it ends with proper punctuation
+    if (cleaned.length > 0 && !/[.!?]$/.test(cleaned)) {
+      cleaned += '.'
+    }
+
+    return cleaned
   }
 
   /**
@@ -176,7 +203,7 @@ export class RAGService {
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userMessage },
         ],
-        max_tokens: 250, // Increased for better complete responses
+        max_tokens: 80, // Reduced for 4-5 lines (~60-80 tokens)
         temperature: 0.6, // Lower for more focused responses
         top_p: 0.9, // More focused sampling
         repetition_penalty: 1.1, // Reduce repetition
@@ -223,16 +250,18 @@ RELEVANT CONTEXT FROM THE BOOK:
 ${context}
 
 IMPORTANT INSTRUCTIONS:
+- Keep responses to 4-5 lines maximum (about 2-3 sentences)
 - Use proper punctuation, grammar, and sentence structure
 - Write in complete, well-formed sentences
-- Use clear paragraph breaks for readability
-- Maintain natural flow and proper spacing
 - Draw from the context above when relevant
 - Speak conversationally but maintain Tolle's gentle, present-moment focused tone
 - Keep responses practical and transformative
-- End responses with a complete thought
+- End responses with a definitive statement, not a question
+- Do not ask follow-up questions at the end of your response
+- Provide complete guidance that stands on its own
+- Be concise but meaningful
 
-Format your response as clear, readable text with proper punctuation.`
+Format your response as clear, readable text. End with a complete sentence and proper punctuation.`
   }
 
   /**
